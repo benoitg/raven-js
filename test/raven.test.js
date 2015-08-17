@@ -13,6 +13,7 @@ function flushRavenState() {
         ignoreUrls: [],
         whitelistUrls: [],
         includePaths: [],
+        crossOrigin: 'anonymous',
         collectWindowErrors: true,
         maxMessageLength: 100,
         tags: {},
@@ -320,6 +321,12 @@ describe('globals', function() {
             this.sinon.stub(console, level);
             logDebug(level, message);
             assert.isTrue(console[level].calledOnce);
+        });
+
+        it('should handle variadic arguments', function() {
+            Raven.debug = true;
+            this.sinon.stub(console, level);
+            logDebug(level, message, {}, 'foo');
         });
     });
 
@@ -817,15 +824,6 @@ describe('globals', function() {
     });
 
     describe('send', function() {
-        it('should check `isSetup`', function() {
-            this.sinon.stub(window, 'isSetup').returns(false);
-            this.sinon.stub(window, 'makeRequest');
-
-            send();
-            assert.isTrue(window.isSetup.calledOnce);
-            assert.isFalse(window.makeRequest.calledOnce);
-        });
-
         it('should build a good data payload', function() {
             this.sinon.stub(window, 'isSetup').returns(true);
             this.sinon.stub(window, 'makeRequest');
@@ -1095,15 +1093,66 @@ describe('globals', function() {
     });
 
     describe('makeRequest', function() {
+        var imageCache;
+
+        beforeEach(function () {
+            imageCache = [];
+            this.sinon.stub(window, 'newImage', function(){ var img = {}; imageCache.push(img); return img; });
+        })
+
+        it('should check `isSetup`', function() {
+            this.sinon.stub(window, 'isSetup').returns(false);
+            makeRequest({foo: 'bar'});
+            assert.isTrue(window.isSetup.called);
+        });
+
+        it('should not create the image if `isSetup` is false', function() {
+            this.sinon.stub(window, 'isSetup').returns(false);
+            makeRequest({foo: 'bar'});
+            assert.isFalse(window.newImage.called);
+        });
+
+        it('should log to console', function() {
+            this.sinon.stub(window, 'isSetup').returns(true);
+            this.sinon.stub(window, 'logDebug');
+            makeRequest({foo: 'bar'});
+            assert.isTrue(window.logDebug.called);
+        });
+
         it('should load an Image', function() {
             authQueryString = '?lol';
             globalServer = 'http://localhost/';
-            var imageCache = [];
-            this.sinon.stub(window, 'newImage', function(){ var img = {}; imageCache.push(img); return img; });
 
             makeRequest({foo: 'bar'});
             assert.equal(imageCache.length, 1);
             assert.equal(imageCache[0].src, 'http://localhost/?lol&sentry_data=%7B%22foo%22%3A%22bar%22%7D');
+        });
+
+        it('should populate crossOrigin based on globalOptions', function() {
+            globalOptions = {
+                crossOrigin: 'something'
+            };
+            makeRequest({foo: 'bar'});
+            assert.equal(imageCache.length, 1);
+            assert.equal(imageCache[0].crossOrigin, 'something');
+        });
+
+        it('should populate crossOrigin if empty string', function() {
+            globalOptions = {
+                crossOrigin: ''
+            };
+            makeRequest({foo: 'bar'});
+            assert.equal(imageCache.length, 1);
+            assert.equal(imageCache[0].crossOrigin, '');
+        });
+
+        it('should not populate crossOrigin if falsey', function() {
+            globalOptions = {
+                crossOrigin: false
+            };
+            makeRequest({foo: 'bar'});
+            assert.equal(imageCache.length, 1);
+            assert.isUndefined(imageCache[0].crossOrigin);
         });
     });
 

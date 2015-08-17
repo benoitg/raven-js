@@ -17,6 +17,7 @@ var _Raven = window.Raven,
         ignoreUrls: [],
         whitelistUrls: [],
         includePaths: [],
+        crossOrigin: 'anonymous',
         collectWindowErrors: true,
         tags: {},
         maxMessageLength: 100,
@@ -751,10 +752,26 @@ function send(data) {
 
 
 function makeRequest(data) {
-    var img = newImage(),
-        src = globalServer + authQueryString + '&sentry_data=' + encodeURIComponent(JSON.stringify(data));
+    var img,
+        src;
 
-    img.crossOrigin = 'anonymous';
+    if (isSetup()) {
+        logDebug('debug', 'Raven about to send:', data);
+    }
+    else {
+        var ravenDebugOriginal = Raven.debug;
+        //Ugly, but now that logDebug supports variadic arguments, there is little other choice
+        //except duplicating the logDebug function.
+        Raven.debug = true;
+        logDebug('log', 'If configured, Raven would send:', data);
+        Raven.debug = ravenDebugOriginal;
+        return;
+    }
+    img = newImage();
+    src = globalServer + authQueryString + '&sentry_data=' + encodeURIComponent(JSON.stringify(data));
+    if (globalOptions.crossOrigin || globalOptions.crossOrigin === '') {
+        img.crossOrigin = globalOptions.crossOrigin;
+    }
     img.onload = function success() {
         triggerEvent('success', {
             data: data,
@@ -841,9 +858,11 @@ function uuid4() {
     }
 }
 
-function logDebug(level, message) {
+function logDebug(level) {
     if (window.console && console[level] && Raven.debug) {
-        console[level](message);
+        // _slice is coming from vendor/TraceKit/tracekit.js
+        // so it's accessible globally
+        console[level].apply(console, _slice.call(arguments, 1));
     }
 }
 
